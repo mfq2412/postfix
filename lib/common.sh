@@ -250,6 +250,16 @@ create_system_user() {
             useradd --system -d "$home_dir" -s "$shell" "$username"
         fi
         log_info "Created system user: $username"
+    else
+        log_info "System user $username already exists"
+        
+        # Update user properties if needed
+        if [ -n "$home_dir" ]; then
+            usermod -d "$home_dir" "$username" 2>/dev/null || true
+        fi
+        if [ -n "$shell" ]; then
+            usermod -s "$shell" "$username" 2>/dev/null || true
+        fi
     fi
 }
 
