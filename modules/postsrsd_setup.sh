@@ -61,8 +61,8 @@ SRS_DOMAIN=$DOMAIN
 # Domains to exclude from SRS rewriting  
 SRS_EXCLUDE_DOMAINS=$DOMAIN
 
-# SRS separator character
-SRS_SEPARATOR==
+# SRS separator character (must be one of '=+-')
+SRS_SEPARATOR="="
 
 # Path to secret file
 SRS_SECRET=/etc/postsrsd/postsrsd.secret
@@ -90,7 +90,7 @@ SRS_DOMAIN=$DOMAIN
 # Exclude domains from rewriting
 SRS_EXCLUDE_DOMAINS=$DOMAIN
 
-# SRS separator
+# SRS separator (must be one of '=+-')
 SRS_SEPARATOR="="
 
 # Secret file
@@ -129,7 +129,7 @@ setup_postsrsd_systemd() {
     # Create systemd override directory
     mkdir -p /etc/systemd/system/postsrsd.service.d
     
-    # Create override configuration with explicit domain parameter
+    # Create override configuration with correct parameters
     cat > /etc/systemd/system/postsrsd.service.d/override.conf <<EOF
 [Unit]
 Description=PostSRSD (Sender Rewriting Scheme)
@@ -138,8 +138,8 @@ After=network.target
 [Service]
 # Clear any existing ExecStart directives
 ExecStart=
-# Set our custom ExecStart with explicit domain parameter
-ExecStart=/usr/sbin/postsrsd -d $DOMAIN -s /etc/postsrsd/postsrsd.secret -u postsrsd -c /var/lib/postsrsd -f 10001 -r 10002 -a 127.0.0.1
+# Set our custom ExecStart with correct separator and all required parameters
+ExecStart=/usr/sbin/postsrsd -d $DOMAIN -s /etc/postsrsd/postsrsd.secret -u postsrsd -c /var/lib/postsrsd -f 10001 -r 10002 -a 127.0.0.1 -S =
 Type=forking
 ExecReload=/bin/kill -HUP \$MAINPID
 PIDFile=/run/postsrsd.pid
