@@ -12,7 +12,34 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config/mail_config.sh"
 source "$SCRIPT_DIR/lib/common.sh"
 
-# Interactive configuration prompt
+# Basic firewall setup (inline function)
+setup_basic_firewall() {
+    log_step "CONFIGURING BASIC FIREWALL"
+    
+    log_info "Setting up UFW firewall..."
+    
+    # Reset UFW to defaults
+    ufw --force reset > /dev/null 2>&1
+    ufw --force enable > /dev/null 2>&1
+    
+    # Set default policies
+    ufw default deny incoming > /dev/null 2>&1
+    ufw default allow outgoing > /dev/null 2>&1
+    
+    # Allow essential services
+    ufw allow 22/tcp comment 'SSH' > /dev/null 2>&1
+    ufw allow 25/tcp comment 'SMTP' > /dev/null 2>&1
+    ufw allow 587/tcp comment 'SMTP Submission' > /dev/null 2>&1
+    ufw allow 465/tcp comment 'SMTPS' > /dev/null 2>&1
+    ufw allow 143/tcp comment 'IMAP' > /dev/null 2>&1
+    ufw allow 993/tcp comment 'IMAPS' > /dev/null 2>&1
+    ufw allow 110/tcp comment 'POP3' > /dev/null 2>&1
+    ufw allow 995/tcp comment 'POP3S' > /dev/null 2>&1
+    ufw allow 80/tcp comment 'HTTP (Lets Encrypt)' > /dev/null 2>&1
+    ufw allow 443/tcp comment 'HTTPS (Autodiscover)' > /dev/null 2>&1
+    
+    log_success "Basic firewall configured successfully"
+}
 prompt_configuration() {
     echo ""
     echo "=========================================="
@@ -200,32 +227,12 @@ main() {
     "$SCRIPT_DIR/modules/opendkim_setup.sh"
     "$SCRIPT_DIR/modules/postsrsd_setup.sh"
     
-    # Additional services (create these modules if needed)
-    if [ -f "$SCRIPT_DIR/modules/nginx_setup.sh" ]; then
-        "$SCRIPT_DIR/modules/nginx_setup.sh"
-    else
-        log_warning "nginx_setup.sh not found, skipping nginx configuration"
-    fi
-    
-    if [ -f "$SCRIPT_DIR/modules/firewall_setup.sh" ]; then
-        "$SCRIPT_DIR/modules/firewall_setup.sh"
-    else
-        log_warning "firewall_setup.sh not found, skipping firewall configuration"
-    fi
-    
-    if [ -f "$SCRIPT_DIR/modules/ssl_setup.sh" ]; then
-        "$SCRIPT_DIR/modules/ssl_setup.sh"
-    else
-        log_warning "ssl_setup.sh not found, skipping SSL configuration"
-    fi
-    
-    # Security and networking
-    "$SCRIPT_DIR/modules/firewall_setup.sh"
-    "$SCRIPT_DIR/modules/ssl_setup.sh"
-    
     # Mail configuration
     "$SCRIPT_DIR/modules/mail_users_setup.sh"
     "$SCRIPT_DIR/modules/forwarding_setup.sh"
+    
+    # Basic firewall setup (inline)
+    setup_basic_firewall
     
     # Service management
     "$SCRIPT_DIR/modules/service_manager.sh" start_all
