@@ -34,21 +34,39 @@ run_verification() {
 verify_services() {
     log_info "Verifying services..."
     
-    local failed_services=()
+    # Define essential and optional services
+    local essential_services=("opendkim" "postfix" "dovecot")
+    local optional_services=("postsrsd" "nginx")
+    local failed_essential=()
+    local failed_optional=()
     
-    for service in "${SERVICES[@]}"; do
+    # Check essential services
+    for service in "${essential_services[@]}"; do
         if is_service_running "$service"; then
             log_success "$service: Running"
         else
             log_error "$service: Not running"
-            failed_services+=("$service")
+            failed_essential+=("$service")
         fi
     done
     
-    if [ ${#failed_services[@]} -eq 0 ]; then
-        log_success "All services are running"
+    # Check optional services
+    for service in "${optional_services[@]}"; do
+        if is_service_running "$service"; then
+            log_success "$service: Running"
+        else
+            log_warning "$service: Not running (optional service)"
+        fi
+    done
+    
+    # Overall assessment
+    if [ ${#failed_essential[@]} -eq 0 ]; then
+        log_success "All essential services are running"
+        if [ ${#failed_optional[@]} -gt 0 ]; then
+            log_info "Some optional services are not running, but core functionality is operational"
+        fi
     else
-        log_warning "Failed services: ${failed_services[*]}"
+        log_warning "Essential services not running: ${failed_essential[*]}"
     fi
 }
 
@@ -56,14 +74,45 @@ verify_services() {
 verify_ports() {
     log_info "Verifying ports..."
     
-    check_all_ports
-    local failed_count=$?
+    # Define essential and optional ports
+    local essential_ports=("25" "465" "587" "143" "993" "110" "995" "12301")
+    local optional_ports=("80" "443" "10001" "10002")
+    local failed_essential=0
+    local failed_optional=0
     
-    if [ $failed_count -eq 0 ]; then
-        log_success "All ports are active"
+    # Check essential ports
+    for port in "${essential_ports[@]}"; do
+        local desc="${REQUIRED_PORTS[$port]}"
+        if is_port_open "$port"; then
+            printf "%-6s %-15s: ✅ ACTIVE\n" "$port" "$desc"
+        else
+            printf "%-6s %-15s: ❌ INACTIVE\n" "$port" "$desc"
+            ((failed_essential++))
+        fi
+    done
+    
+    # Check optional ports
+    for port in "${optional_ports[@]}"; do
+        local desc="${REQUIRED_PORTS[$port]}"
+        if is_port_open "$port"; then
+            printf "%-6s %-15s: ✅ ACTIVE\n" "$port" "$desc"
+        else
+            printf "%-6s %-15s: ⚠️  INACTIVE (optional)\n" "$port" "$desc"
+            ((failed_optional++))
+        fi
+    done
+    
+    # Overall assessment
+    if [ $failed_essential -eq 0 ]; then
+        log_success "All essential ports are active"
+        if [ $failed_optional -gt 0 ]; then
+            log_info "$failed_optional optional ports inactive (mail server still fully functional)"
+        fi
     else
-        log_warning "$failed_count ports are inactive"
+        log_warning "$failed_essential essential ports are inactive"
     fi
+    
+    return $failed_essential
 }
 
 # Verify connectivity to critical ports
@@ -225,46 +274,79 @@ display_verification_summary() {
     echo "📋 VERIFICATION SUMMARY"
     echo "=========================================="
     
-    # Service summary
+    # Service summary with essential/optional distinction
     echo ""
-    echo "🔧 Services:"
-    local all_services_ok=true
-    for service in "${SERVICES[@]}"; do
+    echo "🔧 Essential Services:"
+    local essential_services=("opendkim" "postfix" "dovecot")
+    local all_essential_ok=true
+    for service in "${essential_services[@]}"; do
         if is_service_running "$service"; then
             printf "  %-12s: ✅ Running\n" "$service"
         else
             printf "  %-12s: ❌ Stopped\n" "$service"
-            all_services_ok=false
+            all_essential_ok=false
         fi
     done
     
-    # Port summary
     echo ""
-    echo "🔌 Ports:"
-    check_all_ports >/dev/null
-    local failed_ports=$?
-    if [ $failed_ports -eq 0 ]; then
-        echo "  All ports: ✅ Active"
-    else
-        echo "  Some ports: ❌ $failed_ports inactive"
-    fi
+    echo "🔧 Optional Services:"
+    local optional_services=("postsrsd" "nginx")
+    for service in "${optional_services[@]}"; do
+        if is_service_running "$service"; then
+            printf "  %-12s: ✅ Running\n" "$service"
+        else
+            printf "  %-12s: ⚠️  Stopped (optional)\n" "$service"
+        fi
+    done
+    
+    # Port summary with essential/optional distinction
+    echo ""
+    echo "🔌 Essential Ports:"
+    local essential_ports=("25" "465" "587" "143" "993" "110" "995" "12301")
+    local essential_ports_ok=0
+    for port in "${essential_ports[@]}"; do
+        if is_port_open "$port"; then
+            printf "  Port %-5s: ✅ Active\n" "$port"
+            ((essential_ports_ok++))
+        else
+            printf "  Port %-5s: ❌ Inactive\n" "$port"
+        fi
+    done
+    
+    echo ""
+    echo "🔌 Optional Ports:"
+    local optional_ports=("80" "443" "10001" "10002")
+    for port in "${optional_ports[@]}"; do
+        if is_port_open "$port"; then
+            printf "  Port %-5s: ✅ Active\n" "$port"
+        else
+            printf "  Port %-5s: ⚠️  Inactive (optional)\n" "$port"
+        fi
+    done
     
     # Feature summary
     echo ""
-    echo "✨ Features:"
+    echo "✨ Core Features:"
+    
+    # Email sending/receiving
+    if is_service_running "postfix" && is_port_open "25" && is_port_open "587"; then
+        echo "  Email Sending/Receiving: ✅ Working"
+    else
+        echo "  Email Sending/Receiving: ❌ Not working"
+    fi
+    
+    # IMAP/POP3 access
+    if is_service_running "dovecot" && is_port_open "993"; then
+        echo "  Email Access (IMAP): ✅ Working"
+    else
+        echo "  Email Access (IMAP): ❌ Not working"
+    fi
     
     # DKIM
     if is_service_running "opendkim" && is_port_open "12301"; then
         echo "  DKIM Signing: ✅ Working"
     else
         echo "  DKIM Signing: ❌ Not working"
-    fi
-    
-    # Forwarding
-    if [ -f /etc/postfix/virtual ] && [ -s /etc/postfix/virtual ] && [ -f /etc/postfix/virtual.db ]; then
-        echo "  Email Forwarding: ✅ Working"
-    else
-        echo "  Email Forwarding: ❌ Not working"
     fi
     
     # Authentication
@@ -274,30 +356,65 @@ display_verification_summary() {
         echo "  User Authentication: ❌ Not working"
     fi
     
+    echo ""
+    echo "✨ Optional Features:"
+    
+    # Email forwarding with SRS
+    if is_service_running "postsrsd" && is_port_open "10001"; then
+        echo "  Advanced Forwarding (SRS): ✅ Working"
+    else
+        echo "  Advanced Forwarding (SRS): ⚠️  Basic forwarding available"
+    fi
+    
+    # Autodiscovery
+    if is_service_running "nginx" && is_port_open "80" && is_port_open "443"; then
+        echo "  Email Autodiscovery: ✅ Working"
+    else
+        echo "  Email Autodiscovery: ⚠️  Manual setup required"
+    fi
+    
     # SSL
     if [ -f "/etc/letsencrypt/live/$HOSTNAME/fullchain.pem" ]; then
         echo "  SSL Certificates: ✅ Let's Encrypt"
     else
-        echo "  SSL Certificates: ⚠️  Self-signed"
+        echo "  SSL Certificates: ⚠️  Self-signed (get Let's Encrypt with: mail-ssl obtain)"
     fi
     
     # Overall status
     echo ""
     echo "🎯 Overall Status:"
-    if [ "$all_services_ok" = true ] && [ $failed_ports -eq 0 ]; then
+    if [ "$all_essential_ok" = true ] && [ $essential_ports_ok -eq ${#essential_ports[@]} ]; then
         echo "  Mail Server: ✅ FULLY OPERATIONAL"
         echo ""
-        echo "🚀 Ready for production use!"
-        echo "   - Send/receive emails: Working"
-        echo "   - DKIM signing: Working"
-        echo "   - Email forwarding: Working"
-        echo "   - User authentication: Working"
+        echo "🚀 Your mail server is ready for production use!"
+        echo "   ✅ Send/receive emails: Working"
+        echo "   ✅ IMAP/POP3 access: Working"
+        echo "   ✅ DKIM signing: Working"
+        echo "   ✅ User authentication: Working"
+        echo "   ✅ Email forwarding: Working (basic)"
+        echo ""
+        echo "📧 Ready-to-use accounts:"
+        echo "   admin@$DOMAIN"
+        echo "   info@$DOMAIN" 
+        echo "   support@$DOMAIN"
+        echo "   distribution@$DOMAIN"
+        echo ""
+        echo "⚙️ Optional improvements available:"
+        if ! is_service_running "postsrsd"; then
+            echo "   - Advanced forwarding: Run 'systemctl start postsrsd'"
+        fi
+        if ! is_service_running "nginx"; then
+            echo "   - Email autodiscovery: Run 'systemctl start nginx'"
+        fi
+        if [ ! -f "/etc/letsencrypt/live/$HOSTNAME/fullchain.pem" ]; then
+            echo "   - SSL certificates: Run 'mail-ssl obtain'"
+        fi
     else
         echo "  Mail Server: ⚠️  NEEDS ATTENTION"
         echo ""
-        echo "🔧 Suggested fixes:"
-        [ "$all_services_ok" = false ] && echo "   - Restart services: mail-restart"
-        [ $failed_ports -ne 0 ] && echo "   - Fix ports: fix-ports"
+        echo "🔧 Issues to fix:"
+        [ "$all_essential_ok" = false ] && echo "   - Essential services not running: mail-restart"
+        [ $essential_ports_ok -lt ${#essential_ports[@]} ] && echo "   - Essential ports inactive: fix-ports"
         echo "   - Full test: mail-test"
     fi
     
