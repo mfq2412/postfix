@@ -83,33 +83,36 @@ EOF
 
     # Also create the default configuration file that PostSRSD looks for
     cat > /etc/default/postsrsd <<EOF
-# PostSRSD configuration
+# PostSRSD configuration file
 # Domain for SRS rewriting
 SRS_DOMAIN=$DOMAIN
 
 # Exclude domains from rewriting  
 SRS_EXCLUDE_DOMAINS=$DOMAIN
 
-# SRS separator (use single character, no quotes)
-SRS_SEPARATOR=
+# SRS separator character (use = as default)
+SRS_SEPARATOR="="
 
-# Secret file
+# Secret file path
 SRS_SECRET=/etc/postsrsd/postsrsd.secret
 
 # Forward port
 SRS_FORWARD_PORT=10001
 
-# Reverse port
+# Reverse port  
 SRS_REVERSE_PORT=10002
 
 # Listen address
 SRS_LISTEN_ADDR=127.0.0.1
 
-# User
+# User to run as
 RUN_AS=postsrsd
 
-# Chroot
+# Chroot directory
 CHROOT=/var/lib/postsrsd
+
+# Additional options
+POSTSRSD_ARGS="-X $DOMAIN -n"
 EOF
 
     # Set proper permissions
@@ -126,28 +129,37 @@ EOF
 setup_postsrsd_systemd() {
     log_info "Configuring PostSRSD systemd service..."
     
-    # Create systemd override directory
-    mkdir -p /etc/systemd/system/postsrsd.service.d
+    # Instead of overriding systemd, let's use the default service and configure it properly
+    # First, ensure the secret file is readable
+    chmod 644 /etc/postsrsd/postsrsd.secret
+    chown postsrsd:postsrsd /etc/postsrsd/postsrsd.secret
     
-    # Create override configuration using only valid parameters
+    # Create a simple working configuration that uses defaults
+    cat > /etc/default/postsrsd <<EOF
+# PostSRSD daemon configuration
+SRS_DOMAIN=$DOMAIN
+SRS_EXCLUDE_DOMAINS=$DOMAIN
+SRS_SEPARATOR="="
+SRS_SECRET=/etc/postsrsd/postsrsd.secret
+SRS_FORWARD_PORT=10001
+SRS_REVERSE_PORT=10002
+SRS_LISTEN_ADDR=127.0.0.1
+CHROOT=/var/lib/postsrsd
+RUN_AS=postsrsd
+EOF
+
+    # Use the default systemd service with minimal override
+    mkdir -p /etc/systemd/system/postsrsd.service.d
     cat > /etc/systemd/system/postsrsd.service.d/override.conf <<EOF
 [Unit]
-Description=PostSRSD (Sender Rewriting Scheme)
 After=network.target
 
 [Service]
-# Clear any existing ExecStart directives
-ExecStart=
-# Set our custom ExecStart with only supported parameters
-ExecStart=/usr/sbin/postsrsd -d $DOMAIN -s /etc/postsrsd/postsrsd.secret -u postsrsd -c /var/lib/postsrsd -f 10001 -r 10002 -a 127.0.0.1
-Type=forking
-ExecReload=/bin/kill -HUP \$MAINPID
-PIDFile=/run/postsrsd.pid
-User=postsrsd
-Group=postsrsd
+# Ensure the service uses our configuration
+Environment="SRS_DOMAIN=$DOMAIN"
+Environment="SRS_SECRET=/etc/postsrsd/postsrsd.secret"
 Restart=on-failure
 RestartSec=5
-Environment="POSTSRSD_CONFIG=/etc/default/postsrsd"
 
 [Install]
 WantedBy=multi-user.target
