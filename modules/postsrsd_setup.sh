@@ -62,7 +62,7 @@ SRS_DOMAIN=$DOMAIN
 SRS_EXCLUDE_DOMAINS=$DOMAIN
 
 # SRS separator character (default is =)
-SRS_SEPARATOR=
+SRS_SEPARATOR="="
 
 # Path to secret file
 SRS_SECRET=/etc/postsrsd/postsrsd.secret
