@@ -12,7 +12,63 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config/mail_config.sh"
 source "$SCRIPT_DIR/lib/common.sh"
 
-# Basic firewall setup (inline function)
+# Service management with PostSRSD fallback
+start_all_services_with_fallback() {
+    log_step "STARTING ALL MAIL SERVICES"
+    
+    # Reload systemd daemon
+    systemctl daemon-reload
+    
+    # Essential services (must work)
+    local essential_services=("opendkim" "postfix" "dovecot")
+    local optional_services=("postsrsd")
+    
+    # Start essential services first
+    for service in "${essential_services[@]}"; do
+        log_info "Starting $service..."
+        systemctl enable "$service" > /dev/null 2>&1
+        
+        if systemctl start "$service"; then
+            sleep 2
+            if systemctl is-active --quiet "$service"; then
+                log_success "$service started successfully"
+            else
+                log_error "$service started but then stopped"
+                return 1
+            fi
+        else
+            log_error "CRITICAL: $service failed to start"
+            return 1
+        fi
+        
+        # Special handling for submission ports
+        if [ "$service" = "postfix" ]; then
+            sleep 5
+            log_info "Reloading Postfix to activate submission ports..."
+            systemctl reload postfix
+            sleep 3
+        fi
+    done
+    
+    # Start optional services (can fail)
+    for service in "${optional_services[@]}"; do
+        log_info "Starting $service..."
+        systemctl enable "$service" > /dev/null 2>&1
+        
+        if systemctl start "$service"; then
+            sleep 2
+            if systemctl is-active --quiet "$service"; then
+                log_success "$service started successfully"
+            else
+                log_warning "$service started but then stopped (optional service)"
+            fi
+        else
+            log_warning "$service failed to start (optional service, continuing...)"
+        fi
+    done
+    
+    log_success "All essential services started successfully"
+}
 setup_basic_firewall() {
     log_step "CONFIGURING BASIC FIREWALL"
     
@@ -225,7 +281,14 @@ main() {
     "$SCRIPT_DIR/modules/postfix_setup.sh"
     "$SCRIPT_DIR/modules/dovecot_setup.sh"
     "$SCRIPT_DIR/modules/opendkim_setup.sh"
-    "$SCRIPT_DIR/modules/postsrsd_setup.sh"
+    
+    # PostSRSD setup with error handling
+    if "$SCRIPT_DIR/modules/postsrsd_setup.sh"; then
+        log_success "PostSRSD configured successfully"
+    else
+        log_warning "PostSRSD configuration failed, but continuing setup..."
+        log_info "Email forwarding will work without SRS rewriting"
+    fi
     
     # Mail configuration
     "$SCRIPT_DIR/modules/mail_users_setup.sh"
@@ -234,8 +297,8 @@ main() {
     # Basic firewall setup (inline)
     setup_basic_firewall
     
-    # Service management
-    "$SCRIPT_DIR/modules/service_manager.sh" start_all
+    # Service management with PostSRSD error handling
+    start_all_services_with_fallback
     
     # Verification and tools
     "$SCRIPT_DIR/modules/verification.sh"
