@@ -95,17 +95,20 @@ setup_postsrsd_systemd() {
     # Create systemd override directory
     mkdir -p /etc/systemd/system/postsrsd.service.d
     
-    # Create override configuration
+    # Create override configuration that properly overrides the existing service
     cat > /etc/systemd/system/postsrsd.service.d/override.conf <<EOF
 [Unit]
 Description=PostSRSD (Sender Rewriting Scheme)
 After=network.target
 
 [Service]
-Type=forking
+# Clear any existing ExecStart directives
+ExecStart=
+# Set our custom ExecStart
 ExecStart=/usr/sbin/postsrsd -f /etc/postsrsd/postsrsd.conf
+Type=forking
 ExecReload=/bin/kill -HUP \$MAINPID
-PIDFile=/var/run/postsrsd.pid
+PIDFile=/run/postsrsd.pid
 User=postsrsd
 Group=postsrsd
 Restart=on-failure
