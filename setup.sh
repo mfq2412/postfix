@@ -67,6 +67,22 @@ start_all_services_with_fallback() {
         fi
     done
     
+    # Try to start nginx if it was configured
+    if [ -f /etc/nginx/sites-available/autodiscover ]; then
+        log_info "Starting nginx..."
+        systemctl enable nginx > /dev/null 2>&1
+        if systemctl start nginx; then
+            sleep 2
+            if systemctl is-active --quiet nginx; then
+                log_success "nginx started successfully"
+            else
+                log_warning "nginx started but then stopped (optional service)"
+            fi
+        else
+            log_warning "nginx failed to start (optional service, continuing...)"
+        fi
+    fi
+    
     log_success "All essential services started successfully"
 }
 setup_basic_firewall() {
@@ -288,6 +304,18 @@ main() {
     else
         log_warning "PostSRSD configuration failed, but continuing setup..."
         log_info "Email forwarding will work without SRS rewriting"
+    fi
+    
+    # Nginx setup with error handling (optional)
+    if [ -f "$SCRIPT_DIR/modules/nginx_setup.sh" ]; then
+        if "$SCRIPT_DIR/modules/nginx_setup.sh"; then
+            log_success "Nginx configured successfully"
+        else
+            log_warning "Nginx configuration failed, but continuing setup..."
+            log_info "Email autodiscovery will require manual client setup"
+        fi
+    else
+        log_info "Nginx setup module not found, skipping autodiscovery configuration"
     fi
     
     # Mail configuration
