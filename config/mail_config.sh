@@ -30,9 +30,29 @@ declare -a MAIL_USERS=(
 )
 
 # Service configuration
-declare -a SERVICES=("postsrsd" "opendkim" "postfix" "dovecot" "nginx")
+declare -a ESSENTIAL_SERVICES=("opendkim" "postfix" "dovecot")
+declare -a OPTIONAL_SERVICES=("postsrsd" "nginx")
+declare -a SERVICES=("${ESSENTIAL_SERVICES[@]}" "${OPTIONAL_SERVICES[@]}")
 
-# Port configuration
+# Port configuration with categories
+declare -A ESSENTIAL_PORTS=(
+    ["25"]="SMTP"
+    ["465"]="SMTPS"
+    ["587"]="Submission"
+    ["143"]="IMAP"
+    ["993"]="IMAPS"
+    ["110"]="POP3"
+    ["995"]="POP3S"
+    ["12301"]="OpenDKIM"
+)
+
+declare -A OPTIONAL_PORTS=(
+    ["80"]="HTTP"
+    ["443"]="HTTPS"
+    ["10001"]="SRS-Forward"
+    ["10002"]="SRS-Reverse"
+)
+
 declare -A REQUIRED_PORTS=(
     ["25"]="SMTP"
     ["465"]="SMTPS"
