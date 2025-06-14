@@ -97,18 +97,35 @@ setup_users_and_groups() {
     if ! getent group vmail >/dev/null; then
         groupadd -g 5000 vmail
         log_info "Created vmail group"
+    else
+        log_info "vmail group already exists"
     fi
     
-    create_system_user "vmail" "5000" "/var/mail" "/bin/false"
-    
-    # Add vmail user to vmail group
-    usermod -g vmail vmail
+    # Create vmail user with proper handling
+    if ! getent passwd vmail >/dev/null; then
+        useradd -u 5000 -g vmail -d /var/mail -s /bin/false vmail
+        log_info "Created vmail user"
+    else
+        log_info "vmail user already exists"
+        # Ensure user is in correct group
+        usermod -g vmail vmail 2>/dev/null || log_warning "Could not update vmail user group"
+    fi
     
     # Create PostSRSD user
-    create_system_user "postsrsd" "" "/var/lib/postsrsd" "/bin/false"
+    if ! getent passwd postsrsd >/dev/null; then
+        create_system_user "postsrsd" "" "/var/lib/postsrsd" "/bin/false"
+        log_info "Created postsrsd user"
+    else
+        log_info "postsrsd user already exists"
+    fi
     
     # Create OpenDKIM user if doesn't exist
-    create_system_user "opendkim" "" "/var/lib/opendkim" "/bin/false"
+    if ! getent passwd opendkim >/dev/null; then
+        create_system_user "opendkim" "" "/var/lib/opendkim" "/bin/false"
+        log_info "Created opendkim user"
+    else
+        log_info "opendkim user already exists"
+    fi
     
     log_success "Users and groups configured"
 }
