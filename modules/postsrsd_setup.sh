@@ -52,13 +52,13 @@ generate_srs_secret() {
 configure_postsrsd_main() {
     log_info "Configuring PostSRSD main settings..."
     
+    # First, create the configuration file in the format PostSRSD expects
     cat > /etc/postsrsd/postsrsd.conf <<EOF
 # PostSRSD Configuration for Email Forwarding
-
-# SRS domain (should match your mail domain)
+# Domain to use for SRS rewriting
 SRS_DOMAIN=$DOMAIN
 
-# Domains to exclude from SRS rewriting
+# Domains to exclude from SRS rewriting  
 SRS_EXCLUDE_DOMAINS=$DOMAIN
 
 # SRS separator character
@@ -73,7 +73,7 @@ RUN_AS=postsrsd
 # Chroot directory
 CHROOT=/var/lib/postsrsd
 
-# Listening addresses
+# Listening ports
 SRS_FORWARD_PORT=10001
 SRS_REVERSE_PORT=10002
 
@@ -81,9 +81,43 @@ SRS_REVERSE_PORT=10002
 SRS_LISTEN_ADDR=127.0.0.1
 EOF
 
+    # Also create the default configuration file that PostSRSD looks for
+    cat > /etc/default/postsrsd <<EOF
+# PostSRSD configuration
+# Domain for SRS rewriting
+SRS_DOMAIN=$DOMAIN
+
+# Exclude domains from rewriting
+SRS_EXCLUDE_DOMAINS=$DOMAIN
+
+# SRS separator
+SRS_SEPARATOR="="
+
+# Secret file
+SRS_SECRET=/etc/postsrsd/postsrsd.secret
+
+# Forward port
+SRS_FORWARD_PORT=10001
+
+# Reverse port
+SRS_REVERSE_PORT=10002
+
+# Listen address
+SRS_LISTEN_ADDR=127.0.0.1
+
+# User
+RUN_AS=postsrsd
+
+# Chroot
+CHROOT=/var/lib/postsrsd
+EOF
+
     # Set proper permissions
     chown root:postsrsd /etc/postsrsd/postsrsd.conf 2>/dev/null || chown root:root /etc/postsrsd/postsrsd.conf
     chmod 640 /etc/postsrsd/postsrsd.conf
+    
+    chown root:root /etc/default/postsrsd
+    chmod 644 /etc/default/postsrsd
     
     log_success "PostSRSD configuration created"
 }
@@ -95,7 +129,7 @@ setup_postsrsd_systemd() {
     # Create systemd override directory
     mkdir -p /etc/systemd/system/postsrsd.service.d
     
-    # Create override configuration that properly overrides the existing service
+    # Create override configuration with explicit domain parameter
     cat > /etc/systemd/system/postsrsd.service.d/override.conf <<EOF
 [Unit]
 Description=PostSRSD (Sender Rewriting Scheme)
@@ -104,8 +138,8 @@ After=network.target
 [Service]
 # Clear any existing ExecStart directives
 ExecStart=
-# Set our custom ExecStart
-ExecStart=/usr/sbin/postsrsd -f /etc/postsrsd/postsrsd.conf
+# Set our custom ExecStart with explicit domain parameter
+ExecStart=/usr/sbin/postsrsd -d $DOMAIN -s /etc/postsrsd/postsrsd.secret -u postsrsd -c /var/lib/postsrsd -f 10001 -r 10002 -a 127.0.0.1
 Type=forking
 ExecReload=/bin/kill -HUP \$MAINPID
 PIDFile=/run/postsrsd.pid
