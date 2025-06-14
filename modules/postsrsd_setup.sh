@@ -38,14 +38,20 @@ generate_srs_secret() {
         # Generate random secret
         dd if=/dev/urandom bs=18 count=1 2>/dev/null | base64 > /etc/postsrsd/postsrsd.secret
         
-        # Set proper permissions
-        chmod 600 /etc/postsrsd/postsrsd.secret
-        chown postsrsd:postsrsd /etc/postsrsd/postsrsd.secret 2>/dev/null || chown root:root /etc/postsrsd/postsrsd.secret
-        
         log_success "SRS secret generated"
     else
         log_info "SRS secret already exists"
     fi
+    
+    # Always ensure proper permissions (this was the issue)
+    chmod 644 /etc/postsrsd/postsrsd.secret
+    chown postsrsd:postsrsd /etc/postsrsd/postsrsd.secret 2>/dev/null || chown root:root /etc/postsrsd/postsrsd.secret
+    
+    # Make sure the directory is accessible
+    chmod 755 /etc/postsrsd
+    chown root:root /etc/postsrsd
+    
+    log_info "SRS secret permissions set correctly"
 }
 
 # Configure main PostSRSD settings
@@ -62,7 +68,7 @@ SRS_DOMAIN=$DOMAIN
 SRS_EXCLUDE_DOMAINS=$DOMAIN
 
 # SRS separator character (default is =)
-SRS_SEPARATOR="="
+SRS_SEPARATOR=
 
 # Path to secret file
 SRS_SECRET=/etc/postsrsd/postsrsd.secret
@@ -129,12 +135,17 @@ EOF
 setup_postsrsd_systemd() {
     log_info "Configuring PostSRSD systemd service..."
     
-    # Instead of overriding systemd, let's use the default service and configure it properly
-    # First, ensure the secret file is readable
+    # Ensure the secret file is properly accessible (fix permissions again)
     chmod 644 /etc/postsrsd/postsrsd.secret
-    chown postsrsd:postsrsd /etc/postsrsd/postsrsd.secret
+    chown postsrsd:postsrsd /etc/postsrsd/postsrsd.secret 2>/dev/null || chown root:root /etc/postsrsd/postsrsd.secret
+    chmod 755 /etc/postsrsd
     
-    # Create a simple working configuration that uses defaults
+    # Ensure the chroot directory exists and has proper permissions
+    mkdir -p /var/lib/postsrsd
+    chown postsrsd:postsrsd /var/lib/postsrsd
+    chmod 755 /var/lib/postsrsd
+    
+    # Create the default configuration that the system service reads
     cat > /etc/default/postsrsd <<EOF
 # PostSRSD daemon configuration
 SRS_DOMAIN=$DOMAIN
@@ -147,25 +158,13 @@ SRS_LISTEN_ADDR=127.0.0.1
 CHROOT=/var/lib/postsrsd
 RUN_AS=postsrsd
 EOF
+    
+    # Set proper permissions on config file
+    chown root:root /etc/default/postsrsd
+    chmod 644 /etc/default/postsrsd
 
-    # Use the default systemd service with minimal override
-    mkdir -p /etc/systemd/system/postsrsd.service.d
-    cat > /etc/systemd/system/postsrsd.service.d/override.conf <<EOF
-[Unit]
-After=network.target
-
-[Service]
-# Ensure the service uses our configuration
-Environment="SRS_DOMAIN=$DOMAIN"
-Environment="SRS_SECRET=/etc/postsrsd/postsrsd.secret"
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    # Reload systemd
+    # Don't override the systemd service - use the default one
+    # Just ensure systemd is reloaded
     systemctl daemon-reload
     
     log_success "PostSRSD systemd service configured"
