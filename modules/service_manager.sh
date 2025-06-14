@@ -16,26 +16,33 @@ source "$(dirname "$SCRIPT_DIR")/lib/common.sh"
 [ -z "$LOG_FILE" ] && init_common
 
 # Main service management functions
-case "${1:-}" in
-    "start_all")
-        start_all_services
-        ;;
-    "stop_all")
-        stop_all_services
-        ;;
-    "restart_all")
-        restart_all_services
-        ;;
-    "status")
-        show_service_status
-        ;;
-    "fix_ports")
-        fix_all_ports
-        ;;
-    *)
-        show_usage
-        ;;
-esac
+main() {
+    case "${1:-}" in
+        "start_all")
+            start_all_services
+            ;;
+        "stop_all")
+            stop_all_services
+            ;;
+        "restart_all")
+            restart_all_services
+            ;;
+        "status")
+            show_service_status
+            ;;
+        "fix_ports")
+            fix_all_ports
+            ;;
+        *)
+            show_usage
+            ;;
+    esac
+}
+
+# Call main function if script is run directly or sourced
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]] || [[ "${1:-}" != "" ]]; then
+    main "$@"
+fi
 
 # Start all services in proper order
 start_all_services() {
