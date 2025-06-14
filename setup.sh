@@ -199,7 +199,25 @@ main() {
     "$SCRIPT_DIR/modules/dovecot_setup.sh"
     "$SCRIPT_DIR/modules/opendkim_setup.sh"
     "$SCRIPT_DIR/modules/postsrsd_setup.sh"
-    "$SCRIPT_DIR/modules/nginx_setup.sh"
+    
+    # Additional services (create these modules if needed)
+    if [ -f "$SCRIPT_DIR/modules/nginx_setup.sh" ]; then
+        "$SCRIPT_DIR/modules/nginx_setup.sh"
+    else
+        log_warning "nginx_setup.sh not found, skipping nginx configuration"
+    fi
+    
+    if [ -f "$SCRIPT_DIR/modules/firewall_setup.sh" ]; then
+        "$SCRIPT_DIR/modules/firewall_setup.sh"
+    else
+        log_warning "firewall_setup.sh not found, skipping firewall configuration"
+    fi
+    
+    if [ -f "$SCRIPT_DIR/modules/ssl_setup.sh" ]; then
+        "$SCRIPT_DIR/modules/ssl_setup.sh"
+    else
+        log_warning "ssl_setup.sh not found, skipping SSL configuration"
+    fi
     
     # Security and networking
     "$SCRIPT_DIR/modules/firewall_setup.sh"
