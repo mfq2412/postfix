@@ -125,6 +125,30 @@ display_configuration_summary() {
     echo "=========================================="
 }
 
+# Check if this is a restart/resume of installation
+check_installation_state() {
+    if [ -f "/opt/mailserver/.installation_started" ]; then
+        echo ""
+        echo "⚠️  Previous installation detected!"
+        echo "   Installation marker found at /opt/mailserver/.installation_started"
+        echo ""
+        read -p "Do you want to (c)ontinue previous installation or (r)estart fresh? (c/r): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Rr]$ ]]; then
+            log_info "Cleaning up previous installation..."
+            rm -f /opt/mailserver/.installation_started
+            # Clean up any partially created users (optional)
+            # This allows for a completely fresh start if needed
+        else
+            log_info "Continuing previous installation..."
+        fi
+    fi
+    
+    # Create installation marker
+    mkdir -p /opt/mailserver
+    touch /opt/mailserver/.installation_started
+}
+
 # Set file permissions for all scripts
 set_file_permissions() {
     log_info "Setting file permissions for all scripts..."
@@ -152,6 +176,9 @@ main() {
     
     # Set file permissions first
     set_file_permissions
+    
+    # Check installation state
+    check_installation_state
     
     # Interactive configuration
     prompt_configuration
@@ -190,6 +217,10 @@ main() {
     "$SCRIPT_DIR/modules/management_tools.sh"
     
     display_completion_summary
+    
+    # Mark installation as completed
+    rm -f /opt/mailserver/.installation_started
+    touch /opt/mailserver/.installation_completed
     
     log_success "Modular mail server setup completed successfully!"
 }
