@@ -125,12 +125,33 @@ display_configuration_summary() {
     echo "=========================================="
 }
 
+# Set file permissions for all scripts
+set_file_permissions() {
+    log_info "Setting file permissions for all scripts..."
+    
+    # Set permissions for configuration and library files
+    chmod +x "$SCRIPT_DIR/config/mail_config.sh" 2>/dev/null || true
+    chmod +x "$SCRIPT_DIR/lib/common.sh" 2>/dev/null || true
+    
+    # Set permissions for all module files
+    chmod +x "$SCRIPT_DIR/modules"/*.sh 2>/dev/null || true
+    
+    # Set permissions for setup scripts
+    chmod +x "$SCRIPT_DIR/setup.sh" 2>/dev/null || true
+    chmod +x "$SCRIPT_DIR/quick-setup.sh" 2>/dev/null || true
+    
+    log_success "File permissions set successfully"
+}
+
 # Main execution
 main() {
     log_step "STARTING MODULAR MAIL SERVER SETUP v7.0"
     
     # Pre-setup checks
     check_root
+    
+    # Set file permissions first
+    set_file_permissions
     
     # Interactive configuration
     prompt_configuration
