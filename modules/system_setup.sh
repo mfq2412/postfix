@@ -93,6 +93,22 @@ EOF
 setup_users_and_groups() {
     log_info "Setting up users and groups..."
     
+    # Create syslog user for logging (fixes logging issues)
+    if ! getent passwd syslog >/dev/null; then
+        useradd --system --home /var/log --shell /bin/false syslog
+        log_info "Created syslog user"
+    else
+        log_info "syslog user already exists"
+    fi
+    
+    # Create adm group for log file access
+    if ! getent group adm >/dev/null; then
+        groupadd adm
+        log_info "Created adm group"
+    else
+        log_info "adm group already exists"
+    fi
+    
     # Create vmail group and user for virtual mailboxes
     if ! getent group vmail >/dev/null; then
         groupadd -g 5000 vmail
@@ -161,10 +177,26 @@ setup_postfix_directories() {
         mkdir -p "/var/spool/postfix/$dir"
     done
     
+    # Fix ownership issues that cause warnings
     chown -R postfix:postfix /var/spool/postfix
     chmod 755 /var/spool/postfix
     chmod 700 /var/spool/postfix/private
     chmod 710 /var/spool/postfix/public
+    chmod 730 /var/spool/postfix/maildrop
+    
+    # Fix postdrop group ownership for specific directories
+    chgrp postdrop /var/spool/postfix/public /var/spool/postfix/maildrop
+    
+    # Ensure proper ownership of system files in chroot
+    if [ -d /var/spool/postfix/etc ]; then
+        chown -R root:root /var/spool/postfix/etc
+    fi
+    if [ -d /var/spool/postfix/lib ]; then
+        chown -R root:root /var/spool/postfix/lib
+    fi
+    if [ -d /var/spool/postfix/usr ]; then
+        chown -R root:root /var/spool/postfix/usr
+    fi
 }
 
 # Setup Dovecot directories
