@@ -275,107 +275,20 @@ set_file_permissions() {
     log_success "File permissions set successfully"
 }
 
-# Main execution (UPDATED)
-main() {
-    log_step "STARTING MODULAR MAIL SERVER SETUP v7.1"
-    
-    # Pre-setup checks
-    check_root
-    
-    # Set file permissions first
-    set_file_permissions
-    
-    # Check installation state
-    check_installation_state
-    
-    # Interactive configuration
-    prompt_configuration
-    
-    # Auto-detect IP if not provided
-    if [ -z "$SERVER_IP" ]; then
-        detect_server_ip
-    fi
-    
-    # Core setup modules
-    log_info "Loading setup modules..."
-    
-    # Phase 1: System preparation
-    "$SCRIPT_DIR/modules/system_setup.sh"
-    
-    # Phase 2: Service configurations
-    "$SCRIPT_DIR/modules/postfix_setup.sh"
-    "$SCRIPT_DIR/modules/dovecot_setup.sh"
-    "$SCRIPT_DIR/modules/opendkim_setup.sh"
-    
-    # Phase 3: PostSRSD setup with enhanced error handling
-    if "$SCRIPT_DIR/modules/postsrsd_setup.sh"; then
-        log_success "PostSRSD configured successfully"
-    else
-        log_warning "PostSRSD configuration failed, attempting fix..."
-        if [ -f "$SCRIPT_DIR/modules/postsrsd_fix.sh" ]; then
-            "$SCRIPT_DIR/modules/postsrsd_fix.sh" fix
-        else
-            log_info "Email forwarding will work without SRS rewriting"
-        fi
-    fi
-    
-    # Phase 4: Nginx setup with error handling (optional)
-    if [ -f "$SCRIPT_DIR/modules/nginx_setup.sh" ]; then
-        if "$SCRIPT_DIR/modules/nginx_setup.sh"; then
-            log_success "Nginx configured successfully"
-        else
-            log_warning "Nginx configuration failed, but continuing setup..."
-            log_info "Email autodiscovery will require manual client setup"
-        fi
-    else
-        log_info "Nginx setup module not found, skipping autodiscovery configuration"
-    fi
-    
-    # Phase 5: Mail configuration
-    "$SCRIPT_DIR/modules/mail_users_setup.sh"
-    "$SCRIPT_DIR/modules/forwarding_setup.sh"
-    
-    # Phase 6: Logging setup (NEW)
-    if [ -f "$SCRIPT_DIR/modules/logging_setup.sh" ]; then
-        log_info "Setting up mail logging..."
-        if "$SCRIPT_DIR/modules/logging_setup.sh" setup; then
-            log_success "Mail logging configured"
-        else
-            log_warning "Mail logging setup failed, continuing..."
-        fi
-    else
-        log_info "Setting up basic mail logging..."
-        setup_basic_logging
-    fi
-    
-    # Phase 7: Basic firewall setup (inline)
-    setup_basic_firewall
-    
-    # Phase 8: Service management with PostSRSD error handling
-    start_all_services_with_fallback
-    
-    # Phase 9: Verification and tools
-    "$SCRIPT_DIR/modules/verification.sh"
-    "$SCRIPT_DIR/modules/management_tools.sh"
-    
-    # Phase 10: Create new management tools (NEW)
-    create_enhanced_management_tools
-    
-    # Phase 11: Initial testing (NEW)
-    run_initial_tests
-    
-    display_completion_summary
-    
-    # Mark installation as completed
-    rm -f /opt/mailserver/.installation_started
-    touch /opt/mailserver/.installation_completed
-    
-    log_success "Modular mail server setup completed successfully!"
-}
-
 # Setup basic logging if module not available
 setup_basic_logging() {
     log_info "Setting up basic mail logging..."
+    
+    # Ensure syslog user and adm group exist (should be created in system_setup)
+    if ! getent passwd syslog >/dev/null; then
+        useradd --system --home /var/log --shell /bin/false syslog
+        log_info "Created syslog user"
+    fi
+    
+    if ! getent group adm >/dev/null; then
+        groupadd adm
+        log_info "Created adm group"
+    fi
     
     # Configure rsyslog
     cat > /etc/rsyslog.d/50-mail.conf <<'EOF'
@@ -391,7 +304,7 @@ mail.warn                       /var/log/mail.warn
 :programname, isequal, "postsrsd" /var/log/mail.log
 EOF
     
-    # Create log files
+    # Create log files with proper ownership
     touch /var/log/mail.log /var/log/mail.err /var/log/mail.warn
     chown syslog:adm /var/log/mail.log /var/log/mail.err /var/log/mail.warn
     chmod 644 /var/log/mail.log /var/log/mail.err /var/log/mail.warn
@@ -400,6 +313,41 @@ EOF
     systemctl restart rsyslog
     
     log_success "Basic mail logging configured"
+}
+
+# Apply post-setup fixes (NEW)
+apply_post_setup_fixes() {
+    log_info "Applying post-setup fixes..."
+    
+    # Fix any remaining Postfix ownership issues
+    log_info "Final Postfix permission fixes..."
+    chown -R postfix:postfix /var/spool/postfix
+    chmod 755 /var/spool/postfix
+    chmod 700 /var/spool/postfix/private
+    chmod 710 /var/spool/postfix/public
+    chmod 730 /var/spool/postfix/maildrop
+    
+    # Fix postdrop group ownership
+    chgrp postdrop /var/spool/postfix/public /var/spool/postfix/maildrop 2>/dev/null || true
+    
+    # Fix any chroot directory ownership
+    if [ -d /var/spool/postfix/etc ]; then
+        chown -R root:root /var/spool/postfix/etc
+    fi
+    if [ -d /var/spool/postfix/lib ]; then
+        chown -R root:root /var/spool/postfix/lib
+    fi
+    if [ -d /var/spool/postfix/usr ]; then
+        chown -R root:root /var/spool/postfix/usr
+    fi
+    
+    # Ensure logging is working properly
+    if [ -f /var/log/mail.log ]; then
+        chown syslog:adm /var/log/mail.log /var/log/mail.err /var/log/mail.warn 2>/dev/null || true
+        chmod 644 /var/log/mail.log /var/log/mail.err /var/log/mail.warn 2>/dev/null || true
+    fi
+    
+    log_success "Post-setup fixes applied"
 }
 
 # Create enhanced management tools (NEW)
@@ -593,6 +541,107 @@ check_root() {
         echo "Please run: sudo bash $0"
         exit 1
     fi
+}
+
+# Main execution (UPDATED)
+main() {
+    log_step "STARTING MODULAR MAIL SERVER SETUP v7.1"
+    
+    # Pre-setup checks
+    check_root
+    
+    # Set file permissions first
+    set_file_permissions
+    
+    # Check installation state
+    check_installation_state
+    
+    # Interactive configuration
+    prompt_configuration
+    
+    # Auto-detect IP if not provided
+    if [ -z "$SERVER_IP" ]; then
+        detect_server_ip
+    fi
+    
+    # Core setup modules
+    log_info "Loading setup modules..."
+    
+    # Phase 1: System preparation
+    "$SCRIPT_DIR/modules/system_setup.sh"
+    
+    # Phase 2: Service configurations
+    "$SCRIPT_DIR/modules/postfix_setup.sh"
+    "$SCRIPT_DIR/modules/dovecot_setup.sh"
+    "$SCRIPT_DIR/modules/opendkim_setup.sh"
+    
+    # Phase 3: PostSRSD setup with enhanced error handling
+    if "$SCRIPT_DIR/modules/postsrsd_setup.sh"; then
+        log_success "PostSRSD configured successfully"
+    else
+        log_warning "PostSRSD configuration failed, attempting fix..."
+        if [ -f "$SCRIPT_DIR/modules/postsrsd_fix.sh" ]; then
+            "$SCRIPT_DIR/modules/postsrsd_fix.sh" fix
+        else
+            log_info "Email forwarding will work without SRS rewriting"
+        fi
+    fi
+    
+    # Phase 4: Nginx setup with error handling (optional)
+    if [ -f "$SCRIPT_DIR/modules/nginx_setup.sh" ]; then
+        if "$SCRIPT_DIR/modules/nginx_setup.sh"; then
+            log_success "Nginx configured successfully"
+        else
+            log_warning "Nginx configuration failed, but continuing setup..."
+            log_info "Email autodiscovery will require manual client setup"
+        fi
+    else
+        log_info "Nginx setup module not found, skipping autodiscovery configuration"
+    fi
+    
+    # Phase 5: Mail configuration
+    "$SCRIPT_DIR/modules/mail_users_setup.sh"
+    "$SCRIPT_DIR/modules/forwarding_setup.sh"
+    
+    # Phase 6: Logging setup (NEW)
+    if [ -f "$SCRIPT_DIR/modules/logging_setup.sh" ]; then
+        log_info "Setting up mail logging..."
+        if "$SCRIPT_DIR/modules/logging_setup.sh" setup; then
+            log_success "Mail logging configured"
+        else
+            log_warning "Mail logging setup failed, continuing..."
+        fi
+    else
+        log_info "Setting up basic mail logging..."
+        setup_basic_logging
+    fi
+    
+    # Phase 7: Basic firewall setup (inline)
+    setup_basic_firewall
+    
+    # Phase 8: Service management with PostSRSD error handling
+    start_all_services_with_fallback
+    
+    # Phase 9: Verification and tools
+    "$SCRIPT_DIR/modules/verification.sh"
+    "$SCRIPT_DIR/modules/management_tools.sh"
+    
+    # Phase 10: Create new management tools (NEW)
+    create_enhanced_management_tools
+    
+    # Phase 11: Post-setup fixes (NEW)
+    apply_post_setup_fixes
+    
+    # Phase 12: Initial testing (NEW)
+    run_initial_tests
+    
+    display_completion_summary
+    
+    # Mark installation as completed
+    rm -f /opt/mailserver/.installation_started
+    touch /opt/mailserver/.installation_completed
+    
+    log_success "Modular mail server setup completed successfully!"
 }
 
 # Execute main function
